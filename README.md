@@ -2,6 +2,25 @@
 ## Cloud Computing Mini-Project  
 **Description**: Flask API to embed/extract PDFs with Swagger docs.  
 
+/pdf-embedding-api
+├── app/
+│   ├── static/          # Static files (CSS, JS)
+│       ├── styles.css       # CSS styles
+│   ├── templates/       # HTML templates
+│       ├── index.html       # Main HTML page
+│   ├── main.py          # Flask app initialization
+│   ├── api              # API routes
+│       ├── embed.py          # Embedding endpoint
+|       ├── extract.py        # Extraction endpoint
+│   ├── swagger/        # Swagger documentation
+│       ├── swagger.json      # Swagger JSON file
+├── requirements.txt
+├── .gitignore
+├── redame.md
+
+
+
+
 ### Technologies  
 - Python 3.9  
 - Flask  

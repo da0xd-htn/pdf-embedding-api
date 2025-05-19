@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Tools</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PDF Tools</h1>
+            <nav>
+                <button class="tab-btn active" data-tab="embed">Embed PDFs</button>
+                <button class="tab-btn" data-tab="extract">Extract PDFs</button>
+                <button class="tab-btn" data-tab="api">API Docs</button>
+            </nav>
+        </header>
+
+        <main>
+            <!-- Embed Tab -->
+            <div id="embed" class="tab-content active">
+                <h2>Embed PDFs</h2>
+                <form id="embed-form">
+                    <div class="file-upload">
+                        <label for="embed-files">Select PDFs (max 4)</label>
+                        <input type="file" id="embed-files" multiple accept=".pdf" required>
+                        <div id="file-preview"></div>
+                    </div>
+                    <button type="submit">Embed Files</button>
+                </form>
+            </div>
+
+            <!-- Extract Tab -->
+            <div id="extract" class="tab-content">
+                <h2>Extract PDFs</h2>
+                <form id="extract-form">
+                    <div class="file-upload">
+                        <label for="extract-file">Select PDF with embedded files</label>
+                        <input type="file" id="extract-file" accept=".pdf" required>
+                    </div>
+                    <button type="submit">Extract Files</button>
+                </form>
+            </div>
+
+            <!-- API Docs Tab -->
+            <div id="api" class="tab-content">
+                <h2>API Documentation</h2>
+                <p>Interactive API documentation:</p>
+                <a href="/apidocs" class="api-link" target="_blank">Open Swagger UI</a>
+            </div>
+        </main>
+    </div>
+
+<script src="/static/scripts.js"></script>
+</body>
+</html>
