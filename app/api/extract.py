@@ -38,7 +38,37 @@ def detect_page_boundaries(reader):
 
 @extract_bp.route('/extract_embedded_pdf', methods=['POST'])
 def extract_embedded_pdf():
-
+    """
+    Extract embedded PDFs from a merged PDF
+    ---
+    tags:
+      - PDF Operations
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: pdf_file
+        in: formData
+        type: file
+        required: true
+        description: The merged PDF containing embedded documents
+    responses:
+      200:
+        description: Returns a ZIP file containing extracted PDFs
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            documents_found:
+              type: integer
+            zip_data:
+              type: string
+              description: Hex-encoded ZIP file data
+      400:
+        description: Invalid input
+      500:
+        description: Internal server error
+    """
     try:
         if 'pdf_file' not in request.files:
             return jsonify({"error": "PDF file is required"}), 400

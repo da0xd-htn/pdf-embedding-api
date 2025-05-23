@@ -8,7 +8,38 @@ embed_bp = Blueprint('embed', __name__, url_prefix='/api')
 
 @embed_bp.route('/create_embedded_pdf', methods=['POST'])
 def create_embedded_pdf():
-
+    """
+    Embed multiple PDFs into a single PDF with metadata
+    ---
+    tags:
+      - PDF Operations
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: main_pdf
+        in: formData
+        type: file
+        required: true
+        description: The main PDF document
+      - name: embedded_pdfs
+        in: formData
+        type: file
+        required: true
+        description: PDFs to embed
+        multiple: true
+    responses:
+      200:
+        description: Returns the merged PDF with embedded metadata
+        content:
+          application/pdf:
+            schema:
+              type: string
+              format: binary
+      400:
+        description: Invalid input
+      500:
+        description: Internal server error
+    """
     try:
         if 'main_pdf' not in request.files:
             return jsonify({"error": "Main PDF is required"}), 400
