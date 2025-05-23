@@ -6,6 +6,7 @@
 ├── app/
 │   ├── static/          # Static files (CSS, JS)
 │       ├── styles.css       # CSS styles
+│       ├── scripts.js    # Js scripts
 │   ├── templates/       # HTML templates
 │       ├── index.html       # Main HTML page
 │   ├── main.py          # Flask app initialization
@@ -13,7 +14,7 @@
 │       ├── embed.py          # Embedding endpoint
 |       ├── extract.py        # Extraction endpoint
 │   ├── swagger/        # Swagger documentation
-│       ├── swagger.json      # Swagger JSON file
+│       ├── 
 ├── requirements.txt
 ├── .gitignore
 ├── redame.md

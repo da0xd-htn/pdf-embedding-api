@@ -22,26 +22,31 @@
             <div id="embed" class="tab-content active">
                 <h2>Embed PDFs</h2>
                 <form id="embed-form">
-                    <div class="file-upload">
-                        <label for="embed-files">Select PDFs (max 4)</label>
-                        <input type="file" id="embed-files" multiple accept=".pdf" required>
-                        <div id="file-preview"></div>
+                    <div class="form-group">
+                        <label for="main-pdf">Main PDF:</label>
+                        <input type="file" id="main-pdf" accept=".pdf" required>
                     </div>
-                    <button type="submit">Embed Files</button>
+                    <div class="form-group">
+                        <label for="embedded-pdfs">PDFs to Embed:</label>
+                        <input type="file" id="embedded-pdfs" multiple accept=".pdf" required>
+                    </div>
+                    <button type="submit">Embed PDFs</button>
                 </form>
+                <div id="embed-result" class="result-container"></div>
             </div>
 
             <!-- Extract Tab -->
-            <div id="extract" class="tab-content">
-                <h2>Extract PDFs</h2>
-                <form id="extract-form">
-                    <div class="file-upload">
-                        <label for="extract-file">Select PDF with embedded files</label>
-                        <input type="file" id="extract-file" accept=".pdf" required>
-                    </div>
-                    <button type="submit">Extract Files</button>
-                </form>
-            </div>
+<div id="extract" class="tab-content">
+    <h2>Extract PDF Pages</h2>
+    <form id="extract-form">
+        <div class="form-group">
+            <label for="extract-file">Select Merged PDF:</label>
+            <input type="file" id="extract-file" accept=".pdf" required>
+        </div>
+        <button type="submit">Extract Pages</button>
+    </form>
+    <div id="extract-result" class="result-container"></div>
+</div>
 
             <!-- API Docs Tab -->
             <div id="api" class="tab-content">

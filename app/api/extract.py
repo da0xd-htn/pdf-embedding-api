@@ -1,58 +1,90 @@
-from flask import Blueprint, request, send_file, jsonify
+from flask import Blueprint, request, jsonify
+from PyPDF2 import PdfReader, PdfWriter
 from io import BytesIO
-from PyPDF2 import PdfReader
-from flasgger import swag_from
+import zipfile
+import logging
+import json
 
-extract_bp = Blueprint('extract', __name__)
+extract_bp = Blueprint('extract', __name__, url_prefix='/api')
 
-@extract_bp.route('/extract', methods=['POST'])
-@swag_from({
-    'tags': ['PDF'],
-    'description': 'Extract embedded PDFs',
-    'consumes': ['multipart/form-data'],
-    'parameters': [
+def detect_page_boundaries(reader):
+    """Fallback method to detect document boundaries"""
+    boundaries = []
+    current_doc = [0]  # Start with first page
+    
+    for i in range(1, len(reader.pages)):
+        prev = reader.pages[i-1]
+        curr = reader.pages[i]
+        
+        # Check for significant layout changes
+        if (prev.mediabox != curr.mediabox or 
+            abs(len(prev.extract_text() or "") - len(curr.extract_text() or "")) > 200):
+            boundaries.append(current_doc)
+            current_doc = [i]
+        else:
+            current_doc.append(i)
+    
+    if current_doc:
+        boundaries.append(current_doc)
+    
+    return [
         {
-            'name': 'pdf_file',
-            'in': 'formData',
-            'type': 'file',
-            'required': True,
-            'description': 'PDF with embedded files'
+            "start": doc[0],
+            "end": doc[-1],
+            "name": f"document_{i+1}.pdf"
         }
-    ],
-    'responses': {
-        200: {
-            'description': 'ZIP file containing extracted PDFs',
-            'content': {'application/zip': {}}
-        },
-        400: {'description': 'Invalid input'}
-    }
-})
-def extract_pdfs():
-    if 'pdf_file' not in request.files:
-        return {"error": "PDF file required"}, 400
-        
+        for i, doc in enumerate(boundaries)
+    ]
+
+@extract_bp.route('/extract_embedded_pdf', methods=['POST'])
+def extract_embedded_pdf():
+
     try:
-        pdf = request.files['pdf_file']
-        reader = PdfReader(pdf)
+        if 'pdf_file' not in request.files:
+            return jsonify({"error": "PDF file is required"}), 400
+
+        pdf_file = request.files['pdf_file']
+        reader = PdfReader(BytesIO(pdf_file.read()))
         
-        if not hasattr(reader, 'attachments') or not reader.attachments:
-            return {"error": "No embedded files found"}, 400
-            
-        # Create zip of attachments
-        from zipfile import ZipFile
-        output = BytesIO()
+        # Try to find metadata first
+        metadata = None
+        if hasattr(reader, 'embedded_files'):
+            for name, (_, data) in reader.embedded_files.items():
+                if name == "_boundaries.json":
+                    metadata = json.loads(data.get_data().decode('utf-8'))
+                    break
         
-        with ZipFile(output, 'w') as zipf:
-            for name, data in reader.attachments:
-                if name.lower().endswith('.pdf'):
-                    zipf.writestr(name, data)
-        
-        output.seek(0)
-        return send_file(
-            output,
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name='extracted_files.zip'
-        )
+        # Fallback to boundary detection
+        if not metadata:
+            if len(reader.pages) < 2:
+                return jsonify({"error": "Not a valid merged PDF"}), 400
+            metadata = {"documents": detect_page_boundaries(reader)}
+
+        # Extract documents
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w') as zipf:
+            for doc in metadata["documents"]:
+                writer = PdfWriter()
+                for page_num in range(doc["start"], doc["end"] + 1):
+                    writer.add_page(reader.pages[page_num])
+                
+                pdf_data = BytesIO()
+                writer.write(pdf_data)
+                pdf_data.seek(0)
+                zipf.writestr(doc["name"], pdf_data.getvalue())
+
+        zip_buffer.seek(0)
+        return jsonify({
+            "success": True,
+            "documents_found": len(metadata["documents"]),
+            "zip_data": zip_buffer.getvalue().hex(),
+            "message": "Used fallback boundary detection" if not metadata else ""
+        })
+
     except Exception as e:
-        return {"error": str(e)}, 500
+        logging.error(f"Extraction failed: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": "Failed to extract documents",
+            "details": str(e)
+        }), 500

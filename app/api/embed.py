@@ -1,58 +1,81 @@
 from flask import Blueprint, request, send_file, jsonify
-from PyPDF2 import PdfWriter, PdfReader, PdfMerger
+from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 from io import BytesIO
 import logging
-import os
+import json
 
 embed_bp = Blueprint('embed', __name__, url_prefix='/api')
 
-@embed_bp.route('/embed', methods=['POST'])
-def embed_pdfs():
-    """
-    Properly embeds multiple PDFs into a main PDF
-    ---
-    Expects:
-      - main_pdf: The base PDF file
-      - files_to_embed: List of PDFs to embed
-    Returns:
-      - Combined PDF with all pages visible
-    """
+@embed_bp.route('/create_embedded_pdf', methods=['POST'])
+def create_embedded_pdf():
+
     try:
-        # Validate input
         if 'main_pdf' not in request.files:
             return jsonify({"error": "Main PDF is required"}), 400
             
-        files = request.files.getlist('files_to_embed')
-        if len(files) > 4:
-            return jsonify({"error": "Maximum 4 files allowed"}), 400
-
-        # Create a merger for combining pages
-        merger = PdfMerger()
-        
-        # Add main PDF first
         main_pdf = request.files['main_pdf']
-        merger.append(BytesIO(main_pdf.read()))
+        embedded_pdfs = request.files.getlist('embedded_pdfs')
         
-        # Add other PDFs
-        for file in files:
-            if file.filename.lower().endswith('.pdf'):
-                merger.append(BytesIO(file.read()))
+        if not embedded_pdfs:
+            return jsonify({"error": "At least one PDF to embed is required"}), 400
 
-        # Generate output
+        # Create merger and process files
+        merger = PdfMerger()
+        metadata = {
+            "documents": [],
+            "version": 1
+        }
+        current_page = 0
+        
+        # Process main PDF
+        main_bytes = main_pdf.read()
+        main_reader = PdfReader(BytesIO(main_bytes))
+        merger.append(BytesIO(main_bytes))
+        metadata["documents"].append({
+            "start": current_page,
+            "end": current_page + len(main_reader.pages) - 1,
+            "name": "main.pdf"
+        })
+        current_page += len(main_reader.pages)
+        
+        # Process embedded PDFs
+        for i, pdf in enumerate(embedded_pdfs):
+            pdf_bytes = pdf.read()
+            pdf_reader = PdfReader(BytesIO(pdf_bytes))
+            merger.append(BytesIO(pdf_bytes))
+            metadata["documents"].append({
+                "start": current_page,
+                "end": current_page + len(pdf_reader.pages) - 1,
+                "name": f"embedded_{i}.pdf"
+            })
+            current_page += len(pdf_reader.pages)
+        
+        # Create final PDF with metadata
+        merged_pdf = BytesIO()
+        merger.write(merged_pdf)
+        merged_pdf.seek(0)
+        
+        # Add metadata using PdfWriter
+        writer = PdfWriter()
+        writer.append(merged_pdf)
+        
+        # Add metadata as attachment
+        writer.add_attachment(
+            "_boundaries.json",
+            json.dumps(metadata).encode('utf-8')
+        )
+        # Write final output
         output = BytesIO()
-        merger.write(output)
+        writer.write(output)
         output.seek(0)
         
         return send_file(
             output,
             mimetype='application/pdf',
             as_attachment=True,
-            download_name='combined.pdf'  # Changed name for clarity
+            download_name='merged.pdf'
         )
 
     except Exception as e:
-        logging.error(f"Embedding error: {str(e)}", exc_info=True)
-        return jsonify({
-            "error": "PDF processing failed",
-            "details": str(e)
-        }), 500
+        logging.error(f"PDF merging failed: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
