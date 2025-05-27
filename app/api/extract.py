@@ -78,93 +78,72 @@ def extract_pdfs():
         reader = PdfReader(BytesIO(pdf_data))
         logging.info(f"Successfully loaded PDF with {len(reader.pages)} pages")
         
-        # Extract embedded files - simplified approach
-        attachments = []
+        # Extract embedded files using direct PDF structure navigation
+        embedded_files = {}
         
         try:
-            # Use PyPDF2's built-in method to get embedded files
-            if hasattr(reader, 'attachments') and reader.attachments:
-                logging.info(f"Found {len(reader.attachments)} attachments using .attachments")
-                for filename, data in reader.attachments.items():
-                    if data and len(data) > 0:
-                        attachments.append((filename, data))
-                        logging.info(f"Extracted: {filename} ({len(data)} bytes)")
+            # Navigate PDF structure: Root -> Names -> EmbeddedFiles
+            catalog = reader.trailer["/Root"]
             
-            # Alternative method using embedded_files attribute
-            elif hasattr(reader, 'embedded_files') and reader.embedded_files:
-                logging.info(f"Found {len(reader.embedded_files)} embedded files")
-                for filename, file_data in reader.embedded_files.items():
-                    try:
-                        # Handle different data formats
-                        if isinstance(file_data, tuple) and len(file_data) >= 2:
-                            # Extract from tuple format (filename, file_object)
-                            file_obj = file_data[1]
-                            if hasattr(file_obj, 'get_data'):
-                                data = file_obj.get_data()
-                            elif hasattr(file_obj, 'data'):
-                                data = file_obj.data
-                            else:
-                                data = file_obj
-                        elif hasattr(file_data, 'get_data'):
-                            data = file_data.get_data()
-                        elif hasattr(file_data, 'data'):
-                            data = file_data.data
-                        else:
-                            data = file_data
+            if "/Names" not in catalog:
+                return jsonify({"error": "No embedded files found - missing /Names in catalog"}), 404
+            
+            names = catalog["/Names"]
+            if "/EmbeddedFiles" not in names:
+                return jsonify({"error": "No embedded files found - missing /EmbeddedFiles"}), 404
+            
+            files_dict = names["/EmbeddedFiles"]
+            if "/Names" not in files_dict:
+                return jsonify({"error": "No embedded files found - missing /Names array"}), 404
+            
+            names_array = files_dict["/Names"]
+            logging.info(f"Found names array with {len(names_array)} items")
+            
+            # Process embedded files in pairs (name, file_spec)
+            for i in range(0, len(names_array), 2):
+                if i + 1 >= len(names_array):
+                    break
+                    
+                try:
+                    # Get filename and file specification
+                    filename = names_array[i]
+                    file_spec = names_array[i + 1].get_object()
+                    
+                    # Navigate to the actual file data
+                    if "/EF" in file_spec and "/F" in file_spec["/EF"]:
+                        file_stream = file_spec["/EF"]["/F"].get_object()
+                        file_data = file_stream.get_data()
                         
-                        if data and len(data) > 0:
-                            attachments.append((filename, data))
-                            logging.info(f"Extracted: {filename} ({len(data)} bytes)")
-                    except Exception as e:
-                        logging.warning(f"Failed to extract {filename}: {str(e)}")
-                        continue
+                        if file_data and len(file_data) > 0:
+                            embedded_files[filename] = file_data
+                            logging.info(f"Extracted: {filename} ({len(file_data)} bytes)")
+                        else:
+                            logging.warning(f"Empty data for file: {filename}")
+                    else:
+                        logging.warning(f"Invalid file structure for: {filename}")
+                        
+                except Exception as e:
+                    logging.error(f"Failed to extract file at index {i}: {str(e)}")
+                    continue
             
-            else:
-                # Manual extraction method as fallback
-                logging.info("Using manual extraction method")
-                if '/Root' in reader.trailer:
-                    root = reader.trailer['/Root']
-                    if '/Names' in root and '/EmbeddedFiles' in root['/Names']:
-                        embedded_files = root['/Names']['/EmbeddedFiles']
-                        if '/Names' in embedded_files:
-                            names_array = embedded_files['/Names']
-                            
-                            # Process pairs of (filename, filespec)
-                            for i in range(0, len(names_array), 2):
-                                if i + 1 < len(names_array):
-                                    try:
-                                        filename = str(names_array[i]).strip('()')
-                                        filespec = names_array[i + 1]
-                                        
-                                        # Get the actual file data
-                                        if hasattr(filespec, 'get_object'):
-                                            filespec = filespec.get_object()
-                                        
-                                        if '/EF' in filespec and '/F' in filespec['/EF']:
-                                            file_stream = filespec['/EF']['/F']
-                                            if hasattr(file_stream, 'get_data'):
-                                                data = file_stream.get_data()
-                                                if data and len(data) > 0:
-                                                    attachments.append((filename, data))
-                                                    logging.info(f"Manually extracted: {filename} ({len(data)} bytes)")
-                                    except Exception as e:
-                                        logging.warning(f"Manual extraction failed for file {i//2}: {str(e)}")
-                                        continue
-        
+        except KeyError as e:
+            logging.error(f"PDF structure navigation failed: {str(e)}")
+            return jsonify({"error": f"Invalid PDF structure: missing {str(e)}"}), 400
         except Exception as e:
-            logging.error(f"Extraction process failed: {str(e)}")
+            logging.error(f"Extraction failed: {str(e)}")
+            return jsonify({"error": f"Extraction failed: {str(e)}"}), 500
         
-        if not attachments:
-            return jsonify({"error": "No embedded files found in the PDF"}), 404
+        if not embedded_files:
+            return jsonify({"error": "No embedded files found"}), 404
         
-        logging.info(f"Total files to extract: {len(attachments)}")
+        logging.info(f"Total files extracted: {len(embedded_files)}")
         
         # Create ZIP file with extracted PDFs
         zip_buffer = BytesIO()
         extracted_count = 0
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for filename, data in attachments:
+            for filename, content in embedded_files.items():
                 try:
                     # Clean filename
                     safe_filename = str(filename).strip()
@@ -172,10 +151,10 @@ def extract_pdfs():
                         safe_filename = f"{safe_filename}.pdf"
                     
                     # Validate that extracted data is actually a PDF
-                    if isinstance(data, bytes) and len(data) > 4 and data.startswith(b'%PDF'):
-                        zipf.writestr(safe_filename, data)
+                    if isinstance(content, bytes) and len(content) > 4 and content.startswith(b'%PDF'):
+                        zipf.writestr(safe_filename, content)
                         extracted_count += 1
-                        logging.info(f"Added to ZIP: {safe_filename} ({len(data)} bytes)")
+                        logging.info(f"Added to ZIP: {safe_filename} ({len(content)} bytes)")
                     else:
                         logging.warning(f"Skipped invalid PDF data for {filename}")
                         
