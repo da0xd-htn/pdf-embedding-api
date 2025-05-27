@@ -23,14 +23,10 @@
                 <h2>Embed PDFs</h2>
                 <form id="embed-form">
                     <div class="form-group">
-                        <label for="main-pdf">Main PDF:</label>
-                        <input type="file" id="main-pdf" accept=".pdf" required>
+                        <label for="pdf-files">Select PDFs to embed:</label>
+                        <input type="file" id="pdf-files" multiple accept=".pdf" required>
                     </div>
-                    <div class="form-group">
-                        <label for="embedded-pdfs">PDFs to Embed:</label>
-                        <input type="file" id="embedded-pdfs" multiple accept=".pdf" required>
-                    </div>
-                    <button type="submit">Embed PDFs</button>
+                    <button type="submit">Create PDF Container</button>
                 </form>
                 <div id="embed-result" class="result-container"></div>
             </div>

@@ -31,48 +31,57 @@ function setupEmbedForm() {
 
 async function handleEmbedFormSubmit(e) {
     e.preventDefault();
-    
     const form = e.target;
     const submitBtn = form.querySelector('button[type="submit"]');
     const resultDiv = document.getElementById('embed-result');
     
     try {
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Embedding...';
-        resultDiv.innerHTML = '<p class="processing">Processing...</p>';
+        submitBtn.textContent = 'Processing...';
+        resultDiv.innerHTML = '<p class="processing">Creating PDF container...</p>';
         
-        const formData = new FormData();
-        const mainPdf = document.getElementById('main-pdf').files[0];
-        const embeddedPdfs = document.getElementById('embedded-pdfs').files;
-        
-        // Validate input
-        if (!mainPdf || embeddedPdfs.length === 0) {
-            throw new Error("Please select a main PDF and at least one PDF to embed");
+        const pdfFiles = document.getElementById('pdf-files').files;
+        if (pdfFiles.length === 0) {
+            throw new Error("Please select at least one PDF");
         }
-        
-        formData.append('main_pdf', mainPdf);
-        Array.from(embeddedPdfs).forEach(pdf => {
-            formData.append('embedded_pdfs', pdf);
+
+        // Validate PDF files
+        for (let file of pdfFiles) {
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                throw new Error(`File "${file.name}" is not a PDF`);
+            }
+        }
+
+        const formData = new FormData();
+        Array.from(pdfFiles).forEach(file => {
+            formData.append('pdf_files', file);
         });
-        
+
         const response = await fetch('/api/create_embedded_pdf', {
             method: 'POST',
             body: formData
         });
-        
+
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Embedding failed');
+            let errorMessage = 'Embedding failed';
+            try {
+                const error = await response.json();
+                errorMessage = error.error || errorMessage;
+            } catch {
+                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
         }
-        
+
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
         
         resultDiv.innerHTML = `
             <div class="success">
-                <p>✓ PDFs embedded successfully!</p>
-                <a href="${url}" download="embedded.pdf" class="download-btn">
-                    Download Embedded PDF
+                <p>✓ ${pdfFiles.length} PDFs embedded successfully!</p>
+                <p>Total size: ${(blob.size / 1024 / 1024).toFixed(2)} MB</p>
+                <a href="${url}" download="embedded_container.pdf" class="download-btn">
+                    Download PDF Container
                 </a>
             </div>
         `;
@@ -85,134 +94,101 @@ async function handleEmbedFormSubmit(e) {
         `;
     } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Embed PDFs';
+        submitBtn.textContent = 'Create PDF Container';
     }
 }
 
 /**
- /**
  * PDF Extraction Form Handler
  */
 function setupExtractForm() {
     const extractForm = document.getElementById('extract-form');
     if (!extractForm) return;
 
-    extractForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    extractForm.addEventListener('submit', handleExtractFormSubmit);
+}
+
+async function handleExtractFormSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const resultDiv = document.getElementById('extract-result');
+    
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Extracting...';
+        resultDiv.innerHTML = '<p class="processing">Extracting embedded files...</p>';
         
-        const form = e.target;
-        const submitBtn = form.querySelector('button[type="submit"]');
-        const resultDiv = document.getElementById('extract-result');
-        
-        try {
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Analyzing PDF...';
-            resultDiv.innerHTML = '<p class="processing">Detecting document boundaries...</p>';
-            
-            const formData = new FormData();
-            formData.append('pdf_file', document.getElementById('extract-file').files[0]);
-    
-            const response = await fetch('/api/extract_embedded_pdf', {
-                method: 'POST',
-                body: formData
-            });
-    
-            const result = await response.json();
-            
-            if (!result.success) {
-                // More descriptive error message
-                let errorMsg = result.error || 'Extraction failed';
-                if (result.details) {
-                    errorMsg += `: ${result.details}`;
-                }
-                throw new Error(errorMsg);
-            }if (!result.success) {
-                // More descriptive error message
-                let errorMsg = result.error || 'Extraction failed';
-                if (result.details) {
-                    errorMsg += `: ${result.details}`;
-                }
-                throw new Error(errorMsg);
-            }
-    
-            // Convert hex back to binary
-            const zipData = new Uint8Array(result.zip_data.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-            const blob = new Blob([zipData], {type: 'application/zip'});
-            const url = URL.createObjectURL(blob);
-            
-            resultDiv.innerHTML = `
-                <div class="success-message">
-                    <p>✓ Found ${result.documents_found} original documents!</p>
-                    <a href="${url}" download="extracted_documents.zip" class="download-btn">
-                        Download Documents (${(blob.size/1024).toFixed(1)} KB)
-                    </a>
-                </div>
-            `;
-            
-        } catch (error) {
-            resultDiv.innerHTML = `
-                <div class="error-message">
-                    <p>✗ ${error.message}</p>
-                </div>
-            `;
-        } finally {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Extract PDFs';
+        const pdfFile = document.getElementById('extract-file').files[0];
+        if (!pdfFile) {
+            throw new Error("Please select a PDF file");
         }
-    });
+
+        if (!pdfFile.name.toLowerCase().endsWith('.pdf')) {
+            throw new Error("Selected file is not a PDF");
+        }
+
+        const formData = new FormData();
+        formData.append('pdf_file', pdfFile);
+
+        const response = await fetch('/api/extract_embedded_pdf', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            let errorMessage = 'Extraction failed';
+            try {
+                const error = await response.json();
+                errorMessage = error.error || errorMessage;
+                if (error.hint) {
+                    errorMessage += `\n\nHint: ${error.hint}`;
+                }
+            } catch {
+                errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        
+        resultDiv.innerHTML = `
+            <div class="success">
+                <p>✓ Embedded files extracted successfully!</p>
+                <p>Archive size: ${(blob.size / 1024 / 1024).toFixed(2)} MB</p>
+                <a href="${url}" download="extracted_pdfs.zip" class="download-btn">
+                    Download Extracted Files (ZIP)
+                </a>
+            </div>
+        `;
+        
+    } catch (error) {
+        resultDiv.innerHTML = `
+            <div class="error">
+                <p style="white-space: pre-line;">✗ ${error.message}</p>
+            </div>
+        `;
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Extract PDFs';
+    }
 }
 
 /**
  * Helper Functions
  */
-function startProcessing(button, text = 'Processing...') {
-    button.disabled = true;
-    button.textContent = text;
+function validatePdfFile(file) {
+    if (!file) return false;
+    return file.name.toLowerCase().endsWith('.pdf') && file.type === 'application/pdf';
 }
 
-function finishProcessing(button, defaultText = 'Submit') {
-    button.disabled = false;
-    button.textContent = defaultText;
-}
-
-function clearResults(container) {
-    if (container) container.innerHTML = '';
-}
-
-function showSuccessResult(blob, container) {
-    const url = URL.createObjectURL(blob);
-    
-    container.innerHTML = `
-        <div class="success-message">
-            <p>✓ PDFs combined successfully!</p>
-            <div class="pdf-preview">
-                <iframe src="${url}" style="width: 100%; height: 500px;"></iframe>
-            </div>
-            <a href="${url}" download="combined.pdf" class="download-btn">
-                Download Combined PDF
-            </a>
-        </div>
-    `;
-}
-
-function showExtractionResult(blob, container) {
-    const url = URL.createObjectURL(blob);
-    container.innerHTML = `
-        <div class="success-message">
-            <p>✓ PDFs extracted successfully!</p>
-            <a href="${url}" download="extracted_files.zip" class="download-btn">
-                Download Extracted Files (ZIP)
-            </a>
-        </div>
-    `;
-}
-
-function showErrorResult(error, container) {
-    container.innerHTML = `
-        <div class="error-message">
-            <p>✗ Error: ${error.message}</p>
-        </div>
-    `;
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 /**
@@ -222,4 +198,34 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTabs();
     setupEmbedForm();
     setupExtractForm();
+    
+    // Add file validation feedback
+    const pdfFilesInput = document.getElementById('pdf-files');
+    const extractFileInput = document.getElementById('extract-file');
+    
+    if (pdfFilesInput) {
+        pdfFilesInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            let validCount = 0;
+            for (let file of files) {
+                if (file.name.toLowerCase().endsWith('.pdf')) {
+                    validCount++;
+                }
+            }
+            
+            if (validCount !== files.length) {
+                alert(`${validCount} of ${files.length} selected files are valid PDFs`);
+            }
+        });
+    }
+    
+    if (extractFileInput) {
+        extractFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && !file.name.toLowerCase().endsWith('.pdf')) {
+                alert('Please select a PDF file');
+                e.target.value = '';
+            }
+        });
+    }
 });
